@@ -35,7 +35,7 @@ services:
       context: ..
       dockerfile: docker/python.prod.Dockerfile
     container_name: dmentor_backend_prod
-    command: gunicorn backend.core.wsgi:application --bind 0.0.0.0:8000 --workers 1
+    command: gunicorn backend.core.wsgi:application --bind 0.0.0.0:8000 --workers 2
     volumes:
       - static_volume_dm_prod:/app/backend/static
       - media_volume_dm_prod:/app/backend/media
@@ -76,7 +76,7 @@ services:
       context: ..
       dockerfile: docker/python.prod.Dockerfile
     container_name: dmentor_celery_worker_prod
-    command: celery -A backend.core worker -l INFO --concurrency=1
+    command: celery -A backend.core worker -l INFO --concurrency=2
     volumes:
       - media_volume_dm_prod:/app/backend/media
       - /var/run/docker.sock:/var/run/docker.sock
