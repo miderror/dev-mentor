@@ -1,0 +1,28 @@
+# Git
+.git
+.gitignore
+
+# Docker
+.dockerignore
+docker-compose.yml
+docker/
+Dockerfile*
+Makefile
+
+# Environments
+.env
+.venv
+venv/
+env/
+
+# Python artifacts & local data
+__pycache__/
+*.pyc
+db.sqlite3
+
+# IDE
+.idea/
+.vscode/
+
+# Docs
+README.md
