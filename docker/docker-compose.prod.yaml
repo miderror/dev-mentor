@@ -109,7 +109,7 @@ services:
     depends_on:
       backend:
         condition: service_started
-  
+
 volumes:
   postgres_data_dm_prod:
   redis_data_dm_prod:
