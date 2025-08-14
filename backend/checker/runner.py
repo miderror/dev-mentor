@@ -23,7 +23,7 @@ EXEC_TIMEOUT_SECONDS = 5
 MEM_LIMIT = "64m"
 CPU_SHARES = 512
 
-SHARED_VOLUME_NAME = "devmentor_runner_temp_data_dm_dev"
+SHARED_VOLUME_NAME = os.getenv("RUNNER_VOLUME_NAME")
 BASE_PATH_IN_WORKER = "/runner_temp"
 
 

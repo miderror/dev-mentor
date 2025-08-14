@@ -39,7 +39,7 @@ shell-dev:
 	$(DC_DEV) exec $(s) sh
 
 makemigrations-dev:
-	$(DC_DEV) exec backend python backend/manage.py makemigrations
+	$(DC_DEV) exec backend python backend/manage.py makemigrations $(args)
 
 migrate-dev:
 	$(DC_DEV) exec backend python backend/manage.py migrate
@@ -76,11 +76,17 @@ logs-prod:
 shell-prod:
 	$(DC_PROD) exec $(s) sh
 
+makemigrations-prod:
+	$(DC_DEV) exec backend python backend/manage.py makemigrations $(args)
+
 migrate-prod:
 	$(DC_PROD) exec backend python backend/manage.py migrate
 
 superuser-prod:
 	$(DC_PROD) exec backend python backend/manage.py createsuperuser
+
+static-prod:
+	$(DC_PROD) exec backend python backend/manage.py collectstatic --noinput
 
 ollama_pull-prod:
 	$(DC_PROD) exec ollama ollama pull $(m)

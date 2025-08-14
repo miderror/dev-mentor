@@ -38,13 +38,18 @@ services:
     expose:
       - 11434
     restart: always
+    deploy:
+      resources:
+        limits:
+          memory: '1200M'
+          cpus: '2'
 
   backend:
     build:
       context: ..
       dockerfile: docker/python.prod.Dockerfile
     container_name: dmentor_backend_prod
-    command: gunicorn backend.core.wsgi:application --bind 0.0.0.0:8000 --workers 4
+    command: gunicorn backend.core.wsgi:application --bind 0.0.0.0:8000 --workers 1
     volumes:
       - static_volume_dm_prod:/app/backend/static
       - media_volume_dm_prod:/app/backend/media
@@ -85,7 +90,7 @@ services:
       context: ..
       dockerfile: docker/python.prod.Dockerfile
     container_name: dmentor_celery_worker_prod
-    command: celery -A backend.core worker -l INFO --concurrency=4
+    command: celery -A backend.core worker -l INFO --concurrency=1
     volumes:
       - media_volume_dm_prod:/app/backend/media
       - /var/run/docker.sock:/var/run/docker.sock

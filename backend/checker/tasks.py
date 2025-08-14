@@ -7,6 +7,7 @@ from textwrap import dedent
 import httpx
 from aiogram import Bot
 from aiogram.enums import ParseMode
+from aiogram.exceptions import TelegramBadRequest
 from asgiref.sync import sync_to_async
 from celery import shared_task
 from django.conf import settings
@@ -21,38 +22,56 @@ from .runner import execute_code
 
 logger = logging.getLogger(__name__)
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
 
 
-async def get_ai_suggestion(error_traceback: str) -> str:
-    system_prompt = (
-        "Ты — полезный ассистент-наставник для начинающих Python-программистов. "
-        "Твоя задача — анализировать ошибки и давать объяснения на русском языке строго в заданном формате и шаблоне. "
-        "Не добавляй никаких вступлений, заключений или лишних фраз. "
-        "Ответ должен содержать только два блока, разделенные пустой строкой (шаблон)."
-    )
+async def get_ai_suggestion(user_code: str, error_traceback: str) -> str:
+    system_prompt = "Ты - робот, который исправляет Python код. Ты СТРОГО следуешь формату. Ты НЕ добавляешь лишних слов. Ты отвечаешь ТОЛЬКО на русском."
 
-    header = dedent("""
-        Проанализируй следующую ошибку в Python коде. Дай ответ строго в формате MarkdownV2, не используя заголовки (#).
+    part_1 = dedent("""
+        ИНСТРУКЦИЯ: Проанализируй КОД и ОШИБКУ после ТВОЯ ЗАДАЧА. Предоставь ТОЛЬКО ТВОЙ ВЫВОД в формате MarkdownV2, точно следуя ШАБЛОНУ ВЫВОДА из ПРИМЕР.
+        
+        ---
+        ПРИМЕР (ШАБЛОН ВЫВОДА ДО ---):
+        🧐 **В чем причина ошибки?**
+        Ошибка `ZeroDivisionError` происходит, когда программа пытается разделить число на ноль, что является невозможной математической операцией. В вашем коде, в строке `print(a / b)`, переменная `b` равна нулю.
 
-        Вот текст ошибки для анализа:
+        ✅ **Как это исправить?**
+        Перед делением нужно проверить, не равен ли делитель (`b`) нулю.
+
+        Вот исправленный код:
+        ```python
+        a = 10
+        b = 0
+        if b != 0:
+            print(a / b)
+        else:
+            print("Ошибка: деление на ноль!")
+        ```
+
+        ---
+        
+        ТВОЯ ЗАДАЧА:
+
+        КОД:
         ```python
     """)
 
-    footer = dedent("""
+    part_2 = dedent("""
         ```
-
-        Вот шаблон, в котором строго нужно вернуть ответ (шаблон находится только внутри блока ```, где вместо всех [] подставь нужный ответ):
-        ```
-        🧐 **В чем причина ошибки?**
-        [Здесь кратко и понятно для новичка объясни, что пошло не так в коде]
-
-        ✅ **Как это исправить?**
-        [Здесь предложи конкретный код или шаги для исправления]
-        ```
+        
+        ОШИБКА:
+        ```python
     """)
 
-    user_prompt = f"{header}\n{error_traceback}\n{footer}"
-    
+    part_3 = dedent("""
+        ```
+
+        ТВОЙ ВЫВОД (Используй ШАБЛОН ВЫВОДА из ПРИМЕР):
+    """)
+
+    user_prompt = f"{part_1}\n{user_code}\n{part_2}\n{error_traceback}\n{part_3}"
+
     logger.info(f"Запрос к AI с ошибкой: {error_traceback[:100]}...")
     start_time = time.monotonic()
     try:
@@ -60,12 +79,13 @@ async def get_ai_suggestion(error_traceback: str) -> str:
             response = await client.post(
                 f"{OLLAMA_HOST}/api/generate",
                 json={
-                    "model": "codellama:7b-instruct",
+                    "model": OLLAMA_MODEL,
                     "system": system_prompt,
                     "prompt": user_prompt,
                     "stream": False,
                     "options": {
-                        "temperature": 0.2,
+                        "temperature": 0.0,
+                        "num_predict": 512,
                     },
                 },
             )
@@ -74,6 +94,8 @@ async def get_ai_suggestion(error_traceback: str) -> str:
             ai_response = data.get(
                 "response", "Не удалось получить ответ от AI."
             ).strip()
+            if ai_response.startswith("```") and ai_response.endswith("```"):
+                ai_response = ai_response[3:-3].strip()
     except httpx.RequestError as e:
         logger.error(f"AI request failed: {e}")
         ai_response = "Не удалось связаться с сервисом AI для анализа ошибки."
@@ -141,7 +163,7 @@ async def check_code_async(user_id: int, code: str, language: str = "python"):
             if common_error:
                 explanation = f"🧐 **В чем причина ошибки?**\n{common_error.title}\n\n✅ **Как это исправить?**\n{common_error.description}"
             else:
-                explanation, ai_time_ms = await get_ai_suggestion(result["stderr"])
+                explanation, ai_time_ms = await get_ai_suggestion(code[:2000], result["stderr"])
                 check_instance.ai_response_ms = ai_time_ms
 
             check_instance.ai_suggestion = explanation
@@ -166,6 +188,8 @@ async def check_code_async(user_id: int, code: str, language: str = "python"):
 
             translation_table = str.maketrans(translation_dict)
             sanitized_explanation = explanation.translate(translation_table)
+            if sanitized_explanation.count("```") % 2 != 0:
+                sanitized_explanation += "\n```"
 
             response_text = (
                 "❌ **В вашем коде произошла ошибка\\!**\n\n"
@@ -177,12 +201,27 @@ async def check_code_async(user_id: int, code: str, language: str = "python"):
             **update_fields
         )
         await check_instance.asave()
-        await bot.send_message(
-            user_id,
-            response_text,
-            parse_mode=ParseMode.MARKDOWN_V2,
-            reply_markup=get_after_check_kb(),
-        )
+        try:
+            await bot.send_message(
+                user_id,
+                response_text,
+                parse_mode=ParseMode.MARKDOWN_V2,
+                reply_markup=get_after_check_kb(),
+            )
+        except TelegramBadRequest as e:
+            logger.warning(f"Failed to send formatted message, sending plain text. Error: {e}")
+            sanitized_stderr = re.sub(r"[`*_\[\]()~>#\+\-=|{}.!]", "", sanitized_stderr)
+            sanitized_explanation = re.sub(r"[`*_\[\]()~>#\+\-=|{}.!]", "", sanitized_explanation)
+            response_text = (
+                "❌ **В вашем коде произошла ошибка\\!**\n\n"
+                f"**Текст ошибки:**\n```\n{sanitized_stderr}\n```\n\n"
+                f"**Анализ и решение:**\n{sanitized_explanation}"
+            )
+            await bot.send_message(
+                user_id,
+                response_text,
+                reply_markup=get_after_check_kb(),
+            )
 
     except Exception as e:
         logger.exception(f"Critical error in check_code_task for user {user_id}: {e}")
