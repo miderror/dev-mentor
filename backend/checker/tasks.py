@@ -21,8 +21,8 @@ from .models import Check, CommonError
 from .runner import execute_code
 
 logger = logging.getLogger(__name__)
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
+AI_API_KEY = os.getenv("AI_API_KEY")
+AI_MODEL_NAME = os.getenv("AI_MODEL_NAME")
 
 
 async def get_ai_suggestion(user_code: str, error_traceback: str) -> str:
@@ -73,37 +73,52 @@ async def get_ai_suggestion(user_code: str, error_traceback: str) -> str:
     user_prompt = f"{part_1}\n{user_code}\n{part_2}\n{error_traceback}\n{part_3}"
 
     logger.info(f"Запрос к AI с ошибкой: {error_traceback[:100]}...")
+
+    api_url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {AI_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": AI_MODEL_NAME,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": 0.1,
+        "max_tokens": 1024,
+    }
+
+    logger.info(f"Запрос к модели {AI_MODEL_NAME}...")
     start_time = time.monotonic()
+    ai_response = "Не удалось получить ответ от AI."
+
     try:
-        async with httpx.AsyncClient(timeout=600.0) as client:
-            response = await client.post(
-                f"{OLLAMA_HOST}/api/generate",
-                json={
-                    "model": OLLAMA_MODEL,
-                    "system": system_prompt,
-                    "prompt": user_prompt,
-                    "stream": False,
-                    "options": {
-                        "temperature": 0.0,
-                        "num_predict": 512,
-                    },
-                },
-            )
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(api_url, json=payload, headers=headers)
             response.raise_for_status()
             data = response.json()
-            ai_response = data.get(
-                "response", "Не удалось получить ответ от AI."
-            ).strip()
-            if ai_response.startswith("```") and ai_response.endswith("```"):
-                ai_response = ai_response[3:-3].strip()
+
+            ai_response = data["choices"][0]["message"]["content"].strip()
+
     except httpx.RequestError as e:
         logger.error(f"AI request failed: {e}")
         ai_response = "Не удалось связаться с сервисом AI для анализа ошибки."
+    except (KeyError, IndexError) as e:
+        logger.error(f"Failed to parse AI response: {e}. Response data: {data}")
+        ai_response = "Получен некорректный ответ от сервиса AI."
 
     end_time = time.monotonic()
     duration_ms = int((end_time - start_time) * 1000)
 
-    return ai_response, duration_ms
+    if ai_response.startswith("```markdown"):
+        ai_response = ai_response[11:]
+    if ai_response.startswith("```"):
+        ai_response = ai_response[3:]
+    if ai_response.endswith("```"):
+        ai_response = ai_response[:-3]
+
+    return ai_response.strip(), duration_ms
 
 
 async def find_common_error(stderr: str) -> CommonError | None:
@@ -163,7 +178,9 @@ async def check_code_async(user_id: int, code: str, language: str = "python"):
             if common_error:
                 explanation = f"🧐 **В чем причина ошибки?**\n{common_error.title}\n\n✅ **Как это исправить?**\n{common_error.description}"
             else:
-                explanation, ai_time_ms = await get_ai_suggestion(code[:2000], result["stderr"])
+                explanation, ai_time_ms = await get_ai_suggestion(
+                    code[:2000], result["stderr"]
+                )
                 check_instance.ai_response_ms = ai_time_ms
 
             check_instance.ai_suggestion = explanation
@@ -209,9 +226,13 @@ async def check_code_async(user_id: int, code: str, language: str = "python"):
                 reply_markup=get_after_check_kb(),
             )
         except TelegramBadRequest as e:
-            logger.warning(f"Failed to send formatted message, sending plain text. Error: {e}")
+            logger.warning(
+                f"Failed to send formatted message, sending plain text. Error: {e}"
+            )
             sanitized_stderr = re.sub(r"[`*_\[\]()~>#\+\-=|{}.!]", "", sanitized_stderr)
-            sanitized_explanation = re.sub(r"[`*_\[\]()~>#\+\-=|{}.!]", "", sanitized_explanation)
+            sanitized_explanation = re.sub(
+                r"[`*_\[\]()~>#\+\-=|{}.!]", "", sanitized_explanation
+            )
             response_text = (
                 "❌ **В вашем коде произошла ошибка\\!**\n\n"
                 f"**Текст ошибки:**\n```\n{sanitized_stderr}\n```\n\n"
