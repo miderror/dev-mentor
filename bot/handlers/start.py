@@ -6,7 +6,7 @@ from aiogram.types import Message, ReplyKeyboardRemove
 from backend.users.models import User
 from bot.handlers.menu import show_main_menu
 from bot.keyboards.reply_keyboards import request_contact_kb
-from bot.utils.db import is_whitelisted, register_user
+from bot.utils.db import get_bot_texts, is_whitelisted, register_user
 
 router = Router()
 
@@ -14,13 +14,12 @@ router = Router()
 @router.message(CommandStart())
 async def start_handler(message: Message, state: FSMContext, user: User | None = None):
     await state.clear()
+    texts = await get_bot_texts()
     if user:
-        welcome_text = "Приветственное сообщение, информация о возможностях бота"
-        await show_main_menu(message, welcome_text)
+        await show_main_menu(message, texts.welcome_message)
     else:
         await message.answer(
-            "Здравствуйте! Для использования бота, пожалуйста, "
-            "подтвердите свой номер телефона",
+            texts.request_contact_message,
             reply_markup=request_contact_kb,
         )
 
@@ -30,8 +29,10 @@ async def contact_handler(
     message: Message, state: FSMContext, user: User | None = None
 ):
     await state.clear()
+    texts = await get_bot_texts()
+
     if user:
-        await show_main_menu(message, "Вы уже авторизованы.")
+        await show_main_menu(message, texts.already_authorized_message)
         return
 
     if message.chat.id != message.contact.user_id:
@@ -48,9 +49,7 @@ async def contact_handler(
         return
 
     if await is_whitelisted(user.phone_number):
-        menu_text = "Ваш номер подтвержден и есть в списке. Добро пожаловать!"
+        menu_text = texts.whitelist_success_message
         await show_main_menu(message, menu_text)
     else:
-        await message.answer(
-            "К сожалению, вашего номера нет в белом списке. Доступ запрещен."
-        )
+        await message.answer(texts.whitelist_fail_message)

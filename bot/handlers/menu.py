@@ -3,6 +3,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from bot.keyboards.inline_keyboards import get_main_menu_kb
+from bot.utils.db import get_bot_texts
 
 router = Router()
 
@@ -15,4 +16,5 @@ async def show_main_menu(message: Message, text: str):
 async def back_to_main_menu_handler(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.delete()
-    await show_main_menu(callback.message, "Вы вернулись в главное меню.")
+    texts = await get_bot_texts()
+    await show_main_menu(callback.message, texts.menu_return_message)

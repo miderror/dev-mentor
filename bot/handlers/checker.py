@@ -8,6 +8,7 @@ from aiogram.types import CallbackQuery, Message
 
 from backend.checker.tasks import check_code_task
 from bot.states import CodeCheck
+from bot.utils.db import get_bot_texts
 
 router = Router()
 
@@ -37,9 +38,8 @@ def decode_file_content(file_bytes: bytes) -> str | None:
 @router.callback_query(F.data == "check_code")
 async def check_code_start(callback: CallbackQuery, state: FSMContext):
     await state.set_state(CodeCheck.waiting_for_code)
-    await callback.message.edit_text(
-        "Отправьте мне свой python-код текстом или файлом (.txt, .py, .docx)."
-    )
+    texts = await get_bot_texts()
+    await callback.message.edit_text(texts.request_code_message)
     await callback.answer()
 
 
@@ -47,9 +47,8 @@ async def check_code_start(callback: CallbackQuery, state: FSMContext):
 async def code_received_text(message: Message, state: FSMContext):
     code = message.text
     await state.clear()
-    await message.answer(
-        "Код получен и отправлен на проверку. Это может занять несколько минут. Ожидайте..."
-    )
+    texts = await get_bot_texts()
+    await message.answer(texts.code_in_review_message)
 
     check_code_task.delay(user_id=message.from_user.id, code=code)
 
@@ -115,9 +114,8 @@ async def code_received_document(message: Message, state: FSMContext):
         return
 
     await state.clear()
-    await message.answer(
-        "Код получен и отправлен на проверку. Это может занять несколько минут. Ожидайте..."
-    )
+    texts = await get_bot_texts()
+    await message.answer(texts.code_in_review_message)
 
     check_code_task.delay(user_id=message.from_user.id, code=code)
 

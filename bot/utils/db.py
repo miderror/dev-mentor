@@ -2,7 +2,7 @@ from asgiref.sync import sync_to_async
 from phonenumber_field.phonenumber import to_python
 from phonenumbers.phonenumberutil import is_valid_number
 
-from backend.content.models import FAQ, SiteSettings
+from backend.content.models import FAQ, BotTexts, SiteSettings
 from backend.users.models import User, Whitelist
 
 
@@ -59,3 +59,9 @@ def get_faq_item(faq_id: int):
         return FAQ.objects.get(id=faq_id)
     except FAQ.DoesNotExist:
         return None
+
+
+@sync_to_async
+def get_bot_texts():
+    texts, _ = BotTexts.objects.get_or_create(pk=1)
+    return texts

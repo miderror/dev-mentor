@@ -6,7 +6,7 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.types import CallbackQuery, FSInputFile
 
 from bot.keyboards.inline_keyboards import FaqCallback, get_faq_list_kb
-from bot.utils.db import get_faq_item, get_faq_list
+from bot.utils.db import get_bot_texts, get_faq_item, get_faq_list
 
 router = Router()
 
@@ -18,8 +18,10 @@ async def show_faq_list_handler(callback: CallbackQuery):
         await callback.answer("Раздел FAQ пока пуст.", show_alert=True)
         return
 
+    texts = await get_bot_texts()
+
     await callback.message.edit_text(
-        "Часто задаваемые вопросы:", reply_markup=get_faq_list_kb(faq_list)
+        texts.faq_list_title, reply_markup=get_faq_list_kb(faq_list)
     )
     await callback.answer()
 
