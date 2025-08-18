@@ -62,7 +62,7 @@ up-prod:
 	$(DC_PROD) up -d
 
 down-prod:
-	$(DC_PROD) down -v
+	$(DC_PROD) down $(args)
 
 stop-prod:
 	$(DC_PROD) stop
