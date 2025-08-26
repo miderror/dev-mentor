@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import re
+import uuid
 
 from aiogram import Bot
 from aiogram.enums import ParseMode
@@ -131,7 +132,9 @@ async def check_solution_async(user_id: int, code: str, task_id: int):
         await check_instance.asave()
 
         keyboard = get_feedback_kb(check_id=check_instance.id)
-        await bot.send_message(user_id, response_text, reply_markup=keyboard, parse_mode="Markdown")
+        await bot.send_message(
+            user_id, response_text, reply_markup=keyboard, parse_mode="Markdown"
+        )
 
     except Exception as e:
         logger.exception(f"Critical error in check_code_task for user {user_id}: {e}")
@@ -172,17 +175,20 @@ async def get_ai_feedback_async(user_id: int, check_id: int):
     check.ai_response_ms = duration_ms
     await check.asave(update_fields=["ai_suggestion", "ai_response_ms"])
 
+    header = "🤖 **Обратная связь от AI**:"
+    final_text = f"{header}\n\n{ai_suggestion}"
+
     try:
         await bot.send_message(
             user_id,
-            f"🤖 **Обратная связь от AI**:\n\n{ai_suggestion}",
+            final_text,
             reply_markup=get_after_check_kb(),
             parse_mode=ParseMode.MARKDOWN,
         )
     except Exception:
         await bot.send_message(
             user_id,
-            f"Обратная связь от AI:\n\n{ai_suggestion}",
+            f"🤖 Обратная связь от AI:\n\n{ai_suggestion}",
             reply_markup=get_after_check_kb(),
         )
     finally:
