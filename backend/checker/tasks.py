@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import re
-import uuid
 
 from aiogram import Bot
 from aiogram.enums import ParseMode
