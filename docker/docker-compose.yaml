@@ -28,14 +28,6 @@ services:
       retries: 5
       start_period: 5s
 
-  ollama:
-    image: ollama/ollama:latest
-    container_name: dmentor_ollama_dev
-    volumes:
-      - ollama_data_dm_dev:/root/.ollama
-    expose:
-      - 11434
-
   backend:
     build:
       context: ..
@@ -121,5 +113,4 @@ volumes:
   redis_data_dm_dev:
   static_volume_dm_dev:
   media_volume_dm_dev:
-  ollama_data_dm_dev:
   runner_temp_data_dm_dev:

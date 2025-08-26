@@ -1,5 +1,6 @@
 from django.db import models
 
+from backend.courses.models import Task
 from backend.users.models import User
 
 
@@ -17,6 +18,15 @@ class Check(models.Model):
         related_name="checks",
         verbose_name="Пользователь",
     )
+    task = models.ForeignKey(
+        Task,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="checks",
+        verbose_name="Задача",
+    )
+
     status = models.CharField(
         max_length=10,
         choices=Status.choices,

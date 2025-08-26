@@ -1,11 +1,16 @@
-# backend/users/admin.py
 from django.contrib import admin
 from django.contrib.auth.models import Group
 from django.contrib.auth.models import User as AuthUser
 from django.urls import reverse
 from django.utils.html import format_html
 
-from .models import User, Whitelist
+from .models import CourseAccess, User, Whitelist
+
+
+class CourseAccessInline(admin.TabularInline):
+    model = CourseAccess
+    extra = 1
+    autocomplete_fields = ["course"]
 
 
 @admin.register(User)
@@ -32,9 +37,12 @@ class UserAdmin(admin.ModelAdmin):
         "failed_checks_count",
         "last_activity_at",
     )
-
+    inlines = [CourseAccessInline]
     fieldsets = (
-        ("Контактная информация", {"fields": ("telegram_id", "username", "phone_number")}),
+        (
+            "Контактная информация",
+            {"fields": ("telegram_id", "username", "phone_number")},
+        ),
         (
             "Статистика активности",
             {
@@ -61,9 +69,18 @@ class UserAdmin(admin.ModelAdmin):
 
 @admin.register(Whitelist)
 class WhitelistAdmin(admin.ModelAdmin):
-    list_display = ("phone_number",)
+    list_display = ("phone_number", "get_courses")
     search_fields = ("phone_number",)
+    filter_horizontal = ("courses",)
+
+    @admin.display(description="Доступные курсы")
+    def get_courses(self, obj: Whitelist):
+        count = obj.courses.count()
+        if count == 0:
+            return "Нет"
+        return ", ".join(obj.courses.values_list("title", flat=True))
 
 
 admin.site.unregister(AuthUser)
 admin.site.unregister(Group)
+admin.site.register(CourseAccess)

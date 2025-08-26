@@ -50,6 +50,9 @@ superuser-dev:
 static-dev:
 	$(DC_DEV) exec backend python backend/manage.py collectstatic --noinput
 
+backend-shell-dev:
+	$(DC_DEV) exec backend /bin/bash
+
 ollama_pull-dev:
 	$(DC_DEV) exec ollama ollama pull $(m)
 

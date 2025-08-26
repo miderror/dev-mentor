@@ -9,20 +9,24 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "t")
 
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
-CSRF_TRUSTED_ORIGINS = os.getenv("CSRF_TRUSTED_ORIGINS", "http://127.0.0.1,http://localhost").split(",")
+CSRF_TRUSTED_ORIGINS = os.getenv(
+    "CSRF_TRUSTED_ORIGINS", "http://127.0.0.1,http://localhost"
+).split(",")
 
 INSTALLED_APPS = [
-    "django.contrib.admin",
+    'backend.core.admin_apps.MyAdminConfig',
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "phonenumber_field",
+    "jsoneditor",
     "backend.users.apps.UsersConfig",
     "backend.checker.apps.CheckerConfig",
     "backend.sender.apps.SenderConfig",
     "backend.content.apps.ContentConfig",
+    "backend.courses.apps.CoursesConfig",
 ]
 
 MIDDLEWARE = [
@@ -113,3 +117,22 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
+
+ADMIN_REORDER = [
+    {
+        'app': 'backend.courses',
+        'label': 'Учебные курсы',
+        'models': (
+            'backend.courses.Course',
+            'backend.courses.Module',
+            'backend.courses.DifficultyLevel',
+            'backend.courses.Task',
+            'backend.courses.UserTaskStatus',
+        )
+    },
+    { 'app': 'users', 'label': 'Пользователи и Доступы' },
+    { 'app': 'content', 'label': 'Контент Бота' },
+    { 'app': 'checker', 'label': 'Проверки Кода' },
+    { 'app': 'sender', 'label': 'Рассылки' },
+    { 'app': 'auth', 'label': 'Администраторы' },
+]

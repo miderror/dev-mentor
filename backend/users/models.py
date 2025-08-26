@@ -38,10 +38,40 @@ class User(models.Model):
 
 class Whitelist(models.Model):
     phone_number = PhoneNumberField(unique=True, verbose_name="Номер телефона")
+    courses = models.ManyToManyField(
+        "courses.Course",
+        blank=True,
+        related_name="whitelisted_phones",
+        verbose_name="Доступные курсы",
+        help_text="Выберите курсы, к которым будет предоставлен доступ по этому номеру.",
+    )
 
     def __str__(self):
         return str(self.phone_number)
 
     class Meta:
-        verbose_name = "Белый список"
+        verbose_name = "Запись в белом списке"
         verbose_name_plural = "Белый список"
+
+
+class CourseAccess(models.Model):
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="course_accesses",
+        verbose_name="Пользователь",
+    )
+    course = models.ForeignKey(
+        "courses.Course",
+        on_delete=models.CASCADE,
+        related_name="user_accesses",
+        verbose_name="Курс",
+    )
+
+    def __str__(self):
+        return f"Доступ для {self.user} к курсу '{self.course}'"
+
+    class Meta:
+        verbose_name = "Доступ к курсу"
+        verbose_name_plural = "Доступы к курсам"
+        unique_together = ("user", "course")
