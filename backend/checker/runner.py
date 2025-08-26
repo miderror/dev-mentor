@@ -2,6 +2,7 @@ import logging
 import os
 import shutil
 import uuid
+import shlex
 
 import docker
 
@@ -10,7 +11,7 @@ logger = logging.getLogger(__name__)
 LANG_CONFIG = {
     "python": {
         "image": "python:3.12-slim",
-        "command": lambda filename: f"python {filename}",
+        "command": lambda filename, escaped_input: f'sh -c "echo -n {escaped_input} | python {filename}"',
         "filename": "main.py"
     },
     # "javascript": {
@@ -19,7 +20,7 @@ LANG_CONFIG = {
     #     "filename": "index.js"
     # },
 }
-EXEC_TIMEOUT_SECONDS = 5
+EXEC_TIMEOUT_SECONDS = 20
 MEM_LIMIT = "64m"
 CPU_SHARES = 512
 
@@ -27,7 +28,7 @@ SHARED_VOLUME_NAME = os.getenv("RUNNER_VOLUME_NAME")
 BASE_PATH_IN_WORKER = "/runner_temp"
 
 
-def execute_code(code: str, language: str = "python") -> dict:
+def execute_code(code: str, language: str = "python", input_data: str = "") -> dict:
     if language not in LANG_CONFIG:
         raise ValueError(f"Unsupported language: {language}")
 
@@ -44,11 +45,15 @@ def execute_code(code: str, language: str = "python") -> dict:
     with open(host_filepath, "w", encoding="utf-8") as f:
         f.write(code)
 
+    escaped_input = shlex.quote(input_data)
+
+    container_command = config["command"](filename, escaped_input)
+
     container = None
     try:
         container = client.containers.run(
             image=config["image"],
-            command=config["command"](filename),
+            command=container_command,
             volumes={SHARED_VOLUME_NAME: {"bind": "/app", "mode": "ro"}},
             working_dir=f"/app/{run_id}",
             mem_limit=MEM_LIMIT,
@@ -59,6 +64,12 @@ def execute_code(code: str, language: str = "python") -> dict:
             remove=False,
             detach=True,
         )
+
+        if input_data:
+            socket = container.attach_socket(params={'stdin': 1, 'stream': 1})
+            socket._sock.sendall(input_data.encode('utf-8'))
+            socket._sock.close()
+            socket.close()
 
         result = container.wait(timeout=EXEC_TIMEOUT_SECONDS)
         exit_code = result.get("StatusCode", 1)

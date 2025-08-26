@@ -1,3 +1,5 @@
+import json
+
 from django.contrib import admin
 from django.urls import reverse
 from django.utils.html import format_html
@@ -42,6 +44,10 @@ class CheckAdmin(admin.ModelAdmin):
             },
         ),
         (
+            "Контекст ошибки (если неверный ответ)",
+            {"classes": ("collapse",), "fields": ("formatted_error_context",)},
+        ),
+        (
             "Анализ AI",
             {
                 "classes": ("collapse",),
@@ -57,12 +63,20 @@ class CheckAdmin(admin.ModelAdmin):
         "formatted_code",
         "formatted_stdout",
         "formatted_stderr",
+        "formatted_error_context",
         "formatted_ai_suggestion",
         "ai_response_seconds",
     )
 
     def has_add_permission(self, request):
         return False
+
+    @admin.display(description="Контекст ошибки")
+    def formatted_error_context(self, obj: Check):
+        if not obj.error_context:
+            return "—"
+        formatted_json = json.dumps(obj.error_context, indent=2, ensure_ascii=False)
+        return format_html("<pre>{}</pre>", formatted_json)
 
     @admin.display(description="Время ответа AI (сек)", ordering="ai_response_ms")
     def ai_response_seconds(self, obj: Check):

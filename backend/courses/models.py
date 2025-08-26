@@ -73,6 +73,13 @@ class Task(models.Model):
         verbose_name="Описание задачи (Markdown)",
         help_text="Поддерживает форматирование Markdown для отображения в боте.",
     )
+    image = models.ImageField(
+        upload_to="tasks_images/",
+        blank=True,
+        null=True,
+        verbose_name="Изображение к задаче",
+        help_text="Опциональное изображение, которое будет показано вместе с описанием.",
+    )
     tests = models.JSONField(
         verbose_name="Проверочные тесты (JSON)",
         help_text='JSON-объект со списком тестов. Формат: {"tests": [{"input": [...], "expected": ...}]}',

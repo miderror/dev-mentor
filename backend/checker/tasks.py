@@ -1,124 +1,25 @@
+import asyncio
 import logging
-import os
 import re
-import time
-from textwrap import dedent
 
-import httpx
 from aiogram import Bot
 from aiogram.enums import ParseMode
-from aiogram.exceptions import TelegramBadRequest
 from asgiref.sync import sync_to_async
 from celery import shared_task
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
+from backend.courses.models import Task, UserTaskStatus
 from backend.users.models import User
-from bot.keyboards.inline_keyboards import get_after_check_kb
+from bot.keyboards.inline_keyboards import get_after_check_kb, get_feedback_kb
+from bot.utils.db import get_check_for_feedback
 
+from . import ai_service
 from .models import Check, CommonError
 from .runner import execute_code
 
 logger = logging.getLogger(__name__)
-AI_API_KEY = os.getenv("AI_API_KEY")
-AI_MODEL_NAME = os.getenv("AI_MODEL_NAME")
-
-
-async def get_ai_suggestion(user_code: str, error_traceback: str) -> str:
-    system_prompt = "Ты - робот, который исправляет Python код. Ты СТРОГО следуешь формату. Ты НЕ добавляешь лишних слов. Ты отвечаешь ТОЛЬКО на русском."
-
-    part_1 = dedent("""
-        ИНСТРУКЦИЯ: Проанализируй КОД и ОШИБКУ после ТВОЯ ЗАДАЧА. Предоставь ТОЛЬКО ТВОЙ ВЫВОД в формате MarkdownV2, точно следуя ШАБЛОНУ ВЫВОДА из ПРИМЕР.
-        
-        ---
-        ПРИМЕР (ШАБЛОН ВЫВОДА ДО ---):
-        🧐 **В чем причина ошибки?**
-        Ошибка `ZeroDivisionError` происходит, когда программа пытается разделить число на ноль, что является невозможной математической операцией. В вашем коде, в строке `print(a / b)`, переменная `b` равна нулю.
-
-        ✅ **Как это исправить?**
-        Перед делением нужно проверить, не равен ли делитель (`b`) нулю.
-
-        Вот исправленный код:
-        ```python
-        a = 10
-        b = 0
-        if b != 0:
-            print(a / b)
-        else:
-            print("Ошибка: деление на ноль!")
-        ```
-
-        ---
-        
-        ТВОЯ ЗАДАЧА:
-
-        КОД:
-        ```python
-    """)
-
-    part_2 = dedent("""
-        ```
-        
-        ОШИБКА:
-        ```python
-    """)
-
-    part_3 = dedent("""
-        ```
-
-        ТВОЙ ВЫВОД (Используй ШАБЛОН ВЫВОДА из ПРИМЕР):
-    """)
-
-    user_prompt = f"{part_1}\n{user_code}\n{part_2}\n{error_traceback}\n{part_3}"
-
-    logger.info(f"Запрос к AI с ошибкой: {error_traceback[:100]}...")
-
-    api_url = "https://api.groq.com/openai/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {AI_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": AI_MODEL_NAME,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        "temperature": 0.1,
-        "max_tokens": 1024,
-    }
-
-    logger.info(f"Запрос к модели {AI_MODEL_NAME}...")
-    start_time = time.monotonic()
-    ai_response = "Не удалось получить ответ от AI."
-
-    try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(api_url, json=payload, headers=headers)
-            response.raise_for_status()
-            data = response.json()
-
-            ai_response = data["choices"][0]["message"]["content"].strip()
-
-    except httpx.RequestError as e:
-        logger.error(f"AI request failed: {e}")
-        ai_response = "Не удалось связаться с сервисом AI для анализа ошибки."
-    except (KeyError, IndexError) as e:
-        logger.error(f"Failed to parse AI response: {e}. Response data: {data}")
-        ai_response = "Получен некорректный ответ от сервиса AI."
-
-    end_time = time.monotonic()
-    duration_ms = int((end_time - start_time) * 1000)
-
-    if ai_response.startswith("```markdown"):
-        ai_response = ai_response[11:]
-    if ai_response.startswith("```"):
-        ai_response = ai_response[3:]
-    if ai_response.endswith("```"):
-        ai_response = ai_response[:-3]
-
-    return ai_response.strip(), duration_ms
 
 
 async def find_common_error(stderr: str) -> CommonError | None:
@@ -130,119 +31,107 @@ async def find_common_error(stderr: str) -> CommonError | None:
 
 
 @shared_task
-def check_code_task(user_id: int, code: str):
-    import asyncio
-
-    asyncio.run(check_code_async(user_id, code))
+def check_solution_task(user_id: int, code: str, task_id: int):
+    asyncio.run(check_solution_async(user_id, code, task_id))
 
 
-async def check_code_async(user_id: int, code: str, language: str = "python"):
+async def check_solution_async(user_id: int, code: str, task_id: int):
     bot = Bot(token=settings.BOT_TOKEN, default=None)
     check_instance = None
     try:
         user = await User.objects.aget(telegram_id=user_id)
+        task = await Task.objects.aget(id=task_id)
+
         check_instance = await Check.objects.acreate(
-            user=user, code=code, status=Check.Status.RUNNING
+            user=user, code=code, task=task, status=Check.Status.RUNNING
         )
 
-        result = await sync_to_async(execute_code)(code, language)
+        tests = task.tests.get("tests", [])
+        failed_test_info = None
+
+        for i, test in enumerate(tests):
+            input_data = "\n".join(map(str, test.get("input", [])))
+            print(i)
+            print(input_data)
+            print(str(test["expected"]).strip())
+            print()
+
+            result = await sync_to_async(execute_code)(code, input_data=input_data)
+
+            if result["exit_code"] != 0 or result["stderr"]:
+                failed_test_info = {
+                    "type": "runtime_error",
+                    "test_num": i + 1,
+                    "stderr": result["stderr"],
+                    "timeout": result["timeout"],
+                }
+                break
+
+            actual_output = result["stdout"].strip()
+            expected_output = str(test["expected"]).strip()
+
+            if isinstance(test["expected"], bool):
+                expected_output = str(test["expected"])
+
+            if actual_output != expected_output:
+                failed_test_info = {
+                    "type": "wrong_answer",
+                    "test_num": i + 1,
+                    "input": input_data,
+                    "expected": expected_output,
+                    "actual": actual_output,
+                }
+                check_instance.stdout = actual_output
+                check_instance.error_context = {
+                    "input": input_data,
+                    "expected": expected_output,
+                }
+                break
 
         update_fields = {
             "checks_count": models.F("checks_count") + 1,
             "last_activity_at": timezone.now(),
         }
 
-        if result["exit_code"] == 0 and not result["stderr"]:
-            check_instance.status = Check.Status.SUCCESS
-            check_instance.stdout = result["stdout"]
+        if failed_test_info:
+            check_instance.status = Check.Status.ERROR
 
-            update_fields["successful_checks_count"] = (
-                models.F("successful_checks_count") + 1
-            )
-
-            response_text = "✅ **Ваш код отработал успешно\\!**"
-        else:
-            if result["timeout"]:
-                check_instance.status = Check.Status.TIMEOUT
+            if failed_test_info["type"] == "runtime_error":
+                check_instance.stderr = failed_test_info["stderr"]
+                response_text = f"❌ *Ошибка выполнения на тесте #{failed_test_info['test_num']}*\n\nВаш код завершился с ошибкой:\n```\n{failed_test_info['stderr'][:1000]}\n```"
             else:
-                check_instance.status = Check.Status.ERROR
-
-            check_instance.stderr = result["stderr"]
+                check_instance.stdout = failed_test_info["actual"]
+                response_text = (
+                    f"❌ *Неверный ответ на тесте #{failed_test_info['test_num']}*\n\n"
+                    f"*Входные данные:*\n`{failed_test_info['input']}`\n\n"
+                    f"*Ожидаемый результат:*\n`{failed_test_info['expected']}`\n\n"
+                    f"*Ваш результат:*\n`{failed_test_info['actual']}`"
+                )
 
             update_fields["failed_checks_count"] = models.F("failed_checks_count") + 1
 
-            common_error = await find_common_error(result["stderr"])
-
-            explanation = ""
-            ai_time_ms = None
-            if common_error:
-                explanation = f"🧐 **В чем причина ошибки?**\n{common_error.title}\n\n✅ **Как это исправить?**\n{common_error.description}"
-            else:
-                explanation, ai_time_ms = await get_ai_suggestion(
-                    code[:2000], result["stderr"]
-                )
-                check_instance.ai_response_ms = ai_time_ms
-
-            check_instance.ai_suggestion = explanation
-            sanitized_stderr = result["stderr"][:1000].replace("```", "``\u200b`")
-            translation_dict = {
-                "[": r"\[",
-                "]": r"\]",
-                "(": r"\(",
-                ")": r"\)",
-                "~": r"\~",
-                ">": r"\>",
-                "#": r"\#",
-                "+": r"\+",
-                "=": r"\=",
-                "-": r"\-",
-                "|": r"\|",
-                "{": r"\{",
-                "}": r"\}",
-                ".": r"\.",
-                "!": r"\!",
-            }
-
-            translation_table = str.maketrans(translation_dict)
-            sanitized_explanation = explanation.translate(translation_table)
-            if sanitized_explanation.count("```") % 2 != 0:
-                sanitized_explanation += "\n```"
-
-            response_text = (
-                "❌ **В вашем коде произошла ошибка\\!**\n\n"
-                f"**Текст ошибки:**\n```\n{sanitized_stderr}\n```\n\n"
-                f"**Анализ и решение:**\n{sanitized_explanation}"
+        else:
+            check_instance.status = Check.Status.SUCCESS
+            response_text = "✅ *Решение принято!*\n\nВсе тесты пройдены успешно."
+            update_fields["successful_checks_count"] = (
+                models.F("successful_checks_count") + 1
+            )
+            await UserTaskStatus.objects.aupdate_or_create(
+                user=user,
+                task=task,
+                defaults={
+                    "status": UserTaskStatus.Status.SOLVED,
+                    "solved_at": timezone.now(),
+                },
             )
 
         await sync_to_async(User.objects.filter(telegram_id=user_id).update)(
             **update_fields
         )
         await check_instance.asave()
-        try:
-            await bot.send_message(
-                user_id,
-                response_text,
-                parse_mode=ParseMode.MARKDOWN_V2,
-                reply_markup=get_after_check_kb(),
-            )
-        except TelegramBadRequest as e:
-            logger.warning(
-                f"Failed to send formatted message, sending plain text. Error: {e}"
-            )
-            sanitized_stderr = re.sub(r"[`*_\[\]()~>#\+\-=|{}.!]", "", sanitized_stderr)
-            sanitized_explanation = re.sub(
-                r"[`*_\[\]()~>#\+\-=|{}.!]", "", sanitized_explanation
-            )
-            response_text = (
-                "❌ **В вашем коде произошла ошибка\\!**\n\n"
-                f"**Текст ошибки:**\n```\n{sanitized_stderr}\n```\n\n"
-                f"**Анализ и решение:**\n{sanitized_explanation}"
-            )
-            await bot.send_message(
-                user_id,
-                response_text,
-                reply_markup=get_after_check_kb(),
-            )
+
+        keyboard = get_feedback_kb(check_id=check_instance.id)
+        await bot.send_message(user_id, response_text, reply_markup=keyboard, parse_mode="Markdown")
 
     except Exception as e:
         logger.exception(f"Critical error in check_code_task for user {user_id}: {e}")
@@ -256,5 +145,45 @@ async def check_code_async(user_id: int, code: str, language: str = "python"):
             "Произошла внутренняя ошибка при проверке кода. Мы уже работаем над этим.",
         )
 
+    finally:
+        await bot.session.close()
+
+
+@shared_task
+def get_ai_feedback_task(user_id: int, check_id: int):
+    asyncio.run(get_ai_feedback_async(user_id, check_id))
+
+
+async def get_ai_feedback_async(user_id: int, check_id: int):
+    bot = Bot(token=settings.BOT_TOKEN, default=None)
+
+    check, task = await get_check_for_feedback(check_id, user_id)
+    if not check or not task:
+        logger.warning(
+            f"AI feedback requested for invalid check_id {check_id} or no access for user {user_id}"
+        )
+        await bot.send_message(user_id, "Не удалось найти вашу проверку.")
+        await bot.session.close()
+        return
+
+    ai_suggestion, duration_ms = await ai_service.get_ai_suggestion(check, task)
+
+    check.ai_suggestion = ai_suggestion
+    check.ai_response_ms = duration_ms
+    await check.asave(update_fields=["ai_suggestion", "ai_response_ms"])
+
+    try:
+        await bot.send_message(
+            user_id,
+            f"🤖 **Обратная связь от AI**:\n\n{ai_suggestion}",
+            reply_markup=get_after_check_kb(),
+            parse_mode=ParseMode.MARKDOWN,
+        )
+    except Exception:
+        await bot.send_message(
+            user_id,
+            f"Обратная связь от AI:\n\n{ai_suggestion}",
+            reply_markup=get_after_check_kb(),
+        )
     finally:
         await bot.session.close()

@@ -6,7 +6,7 @@ from django.utils.html import format_html
 from django.utils.http import urlencode
 from jsoneditor.forms import JSONEditor
 
-from .models import Course, DifficultyLevel, Module, Task, UserTaskStatus
+from .models import Course, DifficultyLevel, Module, Task
 
 
 class TaskAdminForm(forms.ModelForm):
@@ -198,14 +198,17 @@ class TaskAdmin(admin.ModelAdmin):
     formfield_overrides = {
         models.JSONField: {
             "widget": JSONEditor(
-                init_options={"mode": "code", "modes": ["code", "tree", "view"]},
+                init_options={
+                    "mode": "code",
+                    "modes": ["code", "tree", "view"],
+                },
             )
         },
     }
 
     fieldsets = (
         ("Основная информация", {"fields": ("level", "number", "title")}),
-        ("Содержание задачи", {"fields": ("description", "tests")}),
+        ("Содержание задачи", {"fields": ("description", "image", "tests")}),
     )
 
     @admin.display(description="Уровень", ordering="level__title")
@@ -227,13 +230,5 @@ class TaskAdmin(admin.ModelAdmin):
             initial["level"] = level_id
         return initial
 
-
-@admin.register(UserTaskStatus)
-class UserTaskStatusAdmin(admin.ModelAdmin):
-    admin_order = 5
-    list_display = ("user", "task", "status", "solved_at")
-    list_filter = ("status", "task__level__module__course")
-    search_fields = ("user__telegram_id", "user__username", "task__title")
-    list_select_related = ("user", "task")
-    readonly_fields = ("user", "task", "status", "solved_at")
-    autocomplete_fields = ("user", "task")
+    class Media:
+        js = ("admin/js/custom_jsoneditor.js",)

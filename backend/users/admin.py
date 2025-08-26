@@ -9,8 +9,18 @@ from .models import CourseAccess, User, Whitelist
 
 class CourseAccessInline(admin.TabularInline):
     model = CourseAccess
-    extra = 1
-    autocomplete_fields = ["course"]
+    extra = 0
+
+    readonly_fields = ("course",)
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(User)
@@ -83,4 +93,3 @@ class WhitelistAdmin(admin.ModelAdmin):
 
 admin.site.unregister(AuthUser)
 admin.site.unregister(Group)
-admin.site.register(CourseAccess)

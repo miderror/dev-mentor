@@ -40,6 +40,12 @@ class Check(models.Model):
     stderr = models.TextField(
         blank=True, null=True, verbose_name="Стандартная ошибка (stderr)"
     )
+    error_context = models.JSONField(
+        null=True,
+        blank=True,
+        verbose_name="Контекст ошибки",
+        help_text="Сохраняет детали проваленного теста (input, expected, actual).",
+    )
     ai_suggestion = models.TextField(
         blank=True, null=True, verbose_name="Рекомендация от AI"
     )

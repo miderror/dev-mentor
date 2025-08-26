@@ -6,8 +6,12 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
-from backend.checker.tasks import check_code_task
-from bot.states import CodeCheck
+from backend.checker.tasks import (
+    check_solution_task,
+    get_ai_feedback_task,
+)
+from bot.keyboards.inline_keyboards import FeedbackCallback
+from bot.states.check import CodeCheck
 from bot.utils.db import get_bot_texts
 
 router = Router()
@@ -35,22 +39,24 @@ def decode_file_content(file_bytes: bytes) -> str | None:
     return None
 
 
-@router.callback_query(F.data == "check_code")
-async def check_code_start(callback: CallbackQuery, state: FSMContext):
-    await state.set_state(CodeCheck.waiting_for_code)
+async def process_code_submission(message: Message, state: FSMContext, code: str):
+    data = await state.get_data()
+    task_id = data.get("task_id")
+    if not task_id:
+        await message.answer("Произошла ошибка. Пожалуйста, выберите задачу заново.")
+        return
+
+    await state.clear()
+
     texts = await get_bot_texts()
-    await callback.message.edit_text(texts.request_code_message)
-    await callback.answer()
+    await message.answer(texts.code_in_review_message)
+
+    check_solution_task.delay(user_id=message.from_user.id, code=code, task_id=task_id)
 
 
 @router.message(CodeCheck.waiting_for_code, F.text)
 async def code_received_text(message: Message, state: FSMContext):
-    code = message.text
-    await state.clear()
-    texts = await get_bot_texts()
-    await message.answer(texts.code_in_review_message)
-
-    check_code_task.delay(user_id=message.from_user.id, code=code)
+    await process_code_submission(message, state, message.text)
 
 
 @router.message(CodeCheck.waiting_for_code, F.document)
@@ -113,13 +119,20 @@ async def code_received_document(message: Message, state: FSMContext):
         await message.answer("Файл пустой. Пожалуйста, отправьте файл с кодом.")
         return
 
-    await state.clear()
-    texts = await get_bot_texts()
-    await message.answer(texts.code_in_review_message)
-
-    check_code_task.delay(user_id=message.from_user.id, code=code)
+    await process_code_submission(message, state, code)
 
 
 @router.message(CodeCheck.waiting_for_code)
 async def wrong_input_in_code_check(message: Message):
     await message.answer("Пожалуйста, отправьте код текстом или файлом.")
+
+
+@router.callback_query(FeedbackCallback.filter())
+async def request_ai_feedback(callback: CallbackQuery, callback_data: FeedbackCallback):
+    await callback.message.edit_text(
+        "🤖 Анализирую ваше решение... Это может занять несколько минут"
+    )
+    get_ai_feedback_task.delay(
+        user_id=callback.from_user.id, check_id=callback_data.check_id
+    )
+    await callback.answer()
