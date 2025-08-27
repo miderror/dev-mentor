@@ -13,7 +13,7 @@ from django.utils import timezone
 from backend.core.markdown import convert_md_to_html_for_telegram
 from backend.courses.models import Task, UserTaskStatus
 from backend.users.models import User
-from bot.keyboards.inline_keyboards import get_after_check_kb, get_feedback_kb
+from bot.keyboards.inline_keyboards import get_after_submission_kb
 from bot.utils.db import get_check_for_feedback
 
 from . import ai_service
@@ -43,7 +43,13 @@ async def check_solution_async(user_id: int, code: str, task_id: int):
     check_instance = None
     try:
         user = await User.objects.aget(telegram_id=user_id)
-        task = await Task.objects.aget(id=task_id)
+        task = await Task.objects.select_related("level__module__course").aget(
+            id=task_id
+        )
+
+        course_id = task.level.module.course.id
+        module_id = task.level.module.id
+        level_id = task.level.id
 
         check_instance = await Check.objects.acreate(
             user=user, code=code, task=task, status=Check.Status.RUNNING
@@ -129,7 +135,13 @@ async def check_solution_async(user_id: int, code: str, task_id: int):
         )
         await check_instance.asave()
 
-        keyboard = get_feedback_kb(check_id=check_instance.id)
+        keyboard = get_after_submission_kb(
+            task_id=task.id,
+            level_id=level_id,
+            module_id=module_id,
+            course_id=course_id,
+            check_id=check_instance.id,
+        )
         await bot.send_message(
             user_id, response_text, reply_markup=keyboard, parse_mode="Markdown"
         )
@@ -167,6 +179,10 @@ async def get_ai_feedback_async(user_id: int, check_id: int):
         await bot.session.close()
         return
 
+    course_id = task.level.module.course.id
+    module_id = task.level.module.id
+    level_id = task.level.id
+
     ai_suggestion, duration_ms = await ai_service.get_ai_suggestion(check, task)
 
     check.ai_suggestion = ai_suggestion
@@ -176,20 +192,28 @@ async def get_ai_feedback_async(user_id: int, check_id: int):
     header = "<b>🤖 Обратная связь от AI:</b>"
     html_suggestion = convert_md_to_html_for_telegram(ai_suggestion)
     final_text = f"{header}\n\n{html_suggestion}"
+    keyboard = get_after_submission_kb(
+        task_id=task.id,
+        level_id=level_id,
+        module_id=module_id,
+        course_id=course_id,
+    )
 
     try:
         await bot.send_message(
             user_id,
             final_text,
-            reply_markup=get_after_check_kb(),
+            reply_markup=keyboard,
             parse_mode=ParseMode.HTML,
         )
     except Exception as e:
-        logger.error(f"Failed to send AI feedback as HTML, falling back to plain text. Error: {e}")
+        logger.error(
+            f"Failed to send AI feedback as HTML, falling back to plain text. Error: {e}"
+        )
         await bot.send_message(
             user_id,
             f"🤖 Обратная связь от AI:\n\n{ai_suggestion}",
-            reply_markup=get_after_check_kb(),
+            reply_markup=keyboard,
         )
     finally:
         await bot.session.close()

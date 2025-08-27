@@ -2,7 +2,11 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot.utils.db import get_support_link
 
-from .callbacks import FaqCallback, FeedbackCallback, NavigationCallback
+from .callbacks import (
+    FaqCallback,
+    FeedbackCallback,
+    NavigationCallback,
+)
 
 
 async def get_main_menu_kb() -> InlineKeyboardMarkup:
@@ -159,34 +163,54 @@ def get_task_view_kb(
     )
 
 
-def get_feedback_kb(check_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="🤖 Дать обратную связь на решение",
-                    callback_data=FeedbackCallback(check_id=check_id).pack(),
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="⬅️ В главное меню", callback_data="back_to_main_menu"
-                )
-            ],
-        ]
-    )
-
-
-def get_after_check_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="⬅️ Вернуться в меню", callback_data="back_to_main_menu"
-                )
-            ],
-        ]
-    )
+def get_after_submission_kb(
+    task_id: int,
+    level_id: int,
+    module_id: int,
+    course_id: int,
+    check_id: int | None = None,
+) -> InlineKeyboardMarkup:
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text="🤖 Дать обратную связь на решение",
+                callback_data=FeedbackCallback(check_id=check_id).pack(),
+            )
+            if check_id
+            else None
+        ],
+        [
+            InlineKeyboardButton(
+                text="✍️ Решить еще раз",
+                callback_data=NavigationCallback(
+                    level="solve_task",
+                    task_id=task_id,
+                    level_id=level_id,
+                    module_id=module_id,
+                    course_id=course_id,
+                ).pack(),
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="⬅️ Вернуться к задаче",
+                callback_data=NavigationCallback(
+                    level="task_view",
+                    task_id=task_id,
+                    level_id=level_id,
+                    module_id=module_id,
+                    course_id=course_id,
+                ).pack(),
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="⬅️ В главное меню", callback_data="back_to_main_menu"
+            )
+        ],
+    ]
+    filtered_buttons = [[btn for btn in row if btn is not None] for row in buttons]
+    return InlineKeyboardMarkup(inline_keyboard=filtered_buttons)
 
 
 def get_faq_list_kb(faq_list: list[tuple[int, str]]) -> InlineKeyboardMarkup:
