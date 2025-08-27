@@ -50,6 +50,9 @@ superuser-dev:
 static-dev:
 	$(DC_DEV) exec backend python backend/manage.py collectstatic --noinput
 
+seed_db-dev:
+	$(DC_DEV) exec backend python backend/manage.py seed_db
+
 backend-shell-dev:
 	$(DC_DEV) exec backend /bin/bash
 
@@ -90,6 +93,9 @@ superuser-prod:
 
 static-prod:
 	$(DC_PROD) exec backend python backend/manage.py collectstatic --noinput
+
+seed_db-prod:
+	$(DC_PROD) exec backend python backend/manage.py seed_db
 
 ollama_pull-prod:
 	$(DC_PROD) exec ollama ollama pull $(m)
