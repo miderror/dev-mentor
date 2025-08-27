@@ -28,12 +28,13 @@ router = Router()
 @router.callback_query(NavigationCallback.filter(F.level == "courses"))
 async def show_courses(callback: CallbackQuery, state: FSMContext):
     await state.clear()
+    texts = await get_bot_texts()
     courses = await get_user_courses(callback.from_user.id)
     if not courses:
-        await callback.answer("У вас пока нет доступных курсов.", show_alert=True)
+        await callback.answer(texts.no_courses_available_message, show_alert=True)
         return
     await callback.message.edit_text(
-        "Выберите курс:", reply_markup=get_courses_kb(courses)
+        texts.choose_course_message, reply_markup=get_courses_kb(courses)
     )
     await callback.answer()
 
@@ -43,9 +44,10 @@ async def show_modules(
     callback: CallbackQuery, callback_data: NavigationCallback, state: FSMContext
 ):
     await state.clear()
+    texts = await get_bot_texts()
     modules = await get_course_modules(callback_data.course_id, callback.from_user.id)
     await callback.message.edit_text(
-        "Выберите модуль:",
+        texts.choose_module_message,
         reply_markup=get_modules_kb(modules, callback_data.course_id),
     )
     await callback.answer()
@@ -56,9 +58,10 @@ async def show_levels(
     callback: CallbackQuery, callback_data: NavigationCallback, state: FSMContext
 ):
     await state.clear()
+    texts = await get_bot_texts()
     levels = await get_module_levels(callback_data.module_id, callback.from_user.id)
     await callback.message.edit_text(
-        "Выберите уровень сложности:",
+        texts.choose_level_message,
         reply_markup=get_levels_kb(
             levels, callback_data.module_id, callback_data.course_id
         ),
@@ -71,8 +74,9 @@ async def show_tasks(
     callback: CallbackQuery, callback_data: NavigationCallback, state: FSMContext
 ):
     await state.clear()
+    texts = await get_bot_texts()
     tasks = await get_level_tasks(callback_data.level_id, callback.from_user.id)
-    text = "Выберите задачу:"
+    text = texts.choose_task_message
     keyboard = get_tasks_kb(
         tasks,
         callback_data.level_id,

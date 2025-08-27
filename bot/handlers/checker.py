@@ -129,9 +129,8 @@ async def wrong_input_in_code_check(message: Message):
 
 @router.callback_query(FeedbackCallback.filter())
 async def request_ai_feedback(callback: CallbackQuery, callback_data: FeedbackCallback):
-    await callback.message.edit_text(
-        "🤖 Анализирую ваше решение... Это может занять несколько минут"
-    )
+    texts = await get_bot_texts()
+    await callback.message.edit_text(texts.ai_analysis_message)
     get_ai_feedback_task.delay(
         user_id=callback.from_user.id, check_id=callback_data.check_id
     )

@@ -24,7 +24,7 @@ up-dev:
 	$(DC_DEV) up -d
 
 down-dev:
-	$(DC_DEV) down -v
+	$(DC_DEV) down $(args)
 
 stop-dev:
 	$(DC_DEV) stop

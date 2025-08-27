@@ -10,6 +10,7 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
+from backend.core.markdown import convert_md_to_html_for_telegram
 from backend.courses.models import Task, UserTaskStatus
 from backend.users.models import User
 from bot.keyboards.inline_keyboards import get_after_check_kb, get_feedback_kb
@@ -20,6 +21,8 @@ from .models import Check, CommonError
 from .runner import execute_code
 
 logger = logging.getLogger(__name__)
+
+MAX_OUTPUT_LENGTH = 1000
 
 
 async def find_common_error(stderr: str) -> CommonError | None:
@@ -51,10 +54,6 @@ async def check_solution_async(user_id: int, code: str, task_id: int):
 
         for i, test in enumerate(tests):
             input_data = "\n".join(map(str, test.get("input", [])))
-            print(i)
-            print(input_data)
-            print(str(test["expected"]).strip())
-            print()
 
             result = await sync_to_async(execute_code)(code, input_data=input_data)
 
@@ -97,15 +96,15 @@ async def check_solution_async(user_id: int, code: str, task_id: int):
             check_instance.status = Check.Status.ERROR
 
             if failed_test_info["type"] == "runtime_error":
-                check_instance.stderr = failed_test_info["stderr"]
-                response_text = f"❌ *Ошибка выполнения на тесте #{failed_test_info['test_num']}*\n\nВаш код завершился с ошибкой:\n```\n{failed_test_info['stderr'][:1000]}\n```"
+                check_instance.stderr = failed_test_info["stderr"][:MAX_OUTPUT_LENGTH]
+                response_text = f"❌ *Ошибка выполнения на тесте #{failed_test_info['test_num']}*\n\nВаш код завершился с ошибкой:\n```\n{check_instance.stderr}\n```"
             else:
-                check_instance.stdout = failed_test_info["actual"]
+                check_instance.stdout = failed_test_info["actual"][:MAX_OUTPUT_LENGTH]
                 response_text = (
                     f"❌ *Неверный ответ на тесте #{failed_test_info['test_num']}*\n\n"
                     f"*Входные данные:*\n`{failed_test_info['input']}`\n\n"
                     f"*Ожидаемый результат:*\n`{failed_test_info['expected']}`\n\n"
-                    f"*Ваш результат:*\n`{failed_test_info['actual']}`"
+                    f"*Ваш результат:*\n`{check_instance.stdout}`"
                 )
 
             update_fields["failed_checks_count"] = models.F("failed_checks_count") + 1
@@ -174,17 +173,19 @@ async def get_ai_feedback_async(user_id: int, check_id: int):
     check.ai_response_ms = duration_ms
     await check.asave(update_fields=["ai_suggestion", "ai_response_ms"])
 
-    header = "🤖 **Обратная связь от AI**:"
-    final_text = f"{header}\n\n{ai_suggestion}"
+    header = "<b>🤖 Обратная связь от AI:</b>"
+    html_suggestion = convert_md_to_html_for_telegram(ai_suggestion)
+    final_text = f"{header}\n\n{html_suggestion}"
 
     try:
         await bot.send_message(
             user_id,
             final_text,
             reply_markup=get_after_check_kb(),
-            parse_mode=ParseMode.MARKDOWN,
+            parse_mode=ParseMode.HTML,
         )
-    except Exception:
+    except Exception as e:
+        logger.error(f"Failed to send AI feedback as HTML, falling back to plain text. Error: {e}")
         await bot.send_message(
             user_id,
             f"🤖 Обратная связь от AI:\n\n{ai_suggestion}",

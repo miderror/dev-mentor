@@ -20,7 +20,7 @@ LANG_CONFIG = {
     #     "filename": "index.js"
     # },
 }
-EXEC_TIMEOUT_SECONDS = 20
+EXEC_TIMEOUT_SECONDS = 5
 MEM_LIMIT = "64m"
 CPU_SHARES = 512
 

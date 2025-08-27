@@ -122,19 +122,19 @@ CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
 
 ADMIN_REORDER = [
-    {
-        'app': 'backend.courses',
-        'label': 'Учебные курсы',
-        'models': (
-            'backend.courses.Course',
-            'backend.courses.Module',
-            'backend.courses.DifficultyLevel',
-            'backend.courses.Task',
-        )
-    },
     { 'app': 'users', 'label': 'Пользователи и Доступы' },
     { 'app': 'content', 'label': 'Контент Бота' },
     { 'app': 'checker', 'label': 'Проверки Кода' },
     { 'app': 'sender', 'label': 'Рассылки' },
     { 'app': 'auth', 'label': 'Администраторы' },
+    {
+        'app': 'courses',
+        'label': 'Учебные курсы',
+        'models': (
+            'Course',
+            'Module',
+            'DifficultyLevel',
+            'Task',
+        )
+    },
 ]

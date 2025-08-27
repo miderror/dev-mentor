@@ -103,7 +103,6 @@ class TaskInline(admin.TabularInline):
 
 @admin.register(Course)
 class CourseAdmin(admin.ModelAdmin):
-    admin_order = 1
     list_display = ("title",)
     search_fields = ("title",)
     inlines = [ModuleInline]
@@ -111,7 +110,6 @@ class CourseAdmin(admin.ModelAdmin):
 
 @admin.register(Module)
 class ModuleAdmin(admin.ModelAdmin):
-    admin_order = 2
     list_display = ("title", "course", "order")
     list_filter = ("course",)
     search_fields = ("title", "course__title")
@@ -129,7 +127,6 @@ class ModuleAdmin(admin.ModelAdmin):
 
 @admin.register(DifficultyLevel)
 class DifficultyLevelAdmin(admin.ModelAdmin):
-    admin_order = 3
     list_display = ("title", "get_course", "get_module_title", "order")
     list_filter = ("module__course", "module")
     search_fields = ("title", "module__title")
@@ -140,20 +137,26 @@ class DifficultyLevelAdmin(admin.ModelAdmin):
 
     readonly_fields = ("add_task_link",)
 
-    fieldsets = (
-        (None, {"fields": ("module", "title", "order")}),
-        (
-            "Задачи этого уровня",
-            {
-                "fields": ("add_task_link",),
-                "description": "Нажмите на ссылку ниже, чтобы добавить новую задачу. "
-                "После сохранения она появится в списке выше.",
-            },
-        ),
-    )
+    def get_fieldsets(self, request, obj=None):
+        base_fields = ("module", "title", "order")
+        if obj:
+            return (
+                (None, {"fields": base_fields}),
+                (
+                    "Задачи этого уровня",
+                    {
+                        "fields": ("add_task_link",),
+                        "description": "Нажмите на ссылку ниже, чтобы добавить новую задачу. "
+                        "После сохранения она появится в списке выше.",
+                    },
+                ),
+            )
+        return ((None, {"fields": base_fields}),)
 
     @admin.display(description="Добавить задачу")
     def add_task_link(self, obj):
+        if not obj.pk:
+            return "Сначала сохраните уровень, чтобы добавить задачу."
         add_url = reverse("admin:courses_task_add")
         params = urlencode({"level": obj.pk})
         full_url = f"{add_url}?{params}"
@@ -161,6 +164,7 @@ class DifficultyLevelAdmin(admin.ModelAdmin):
             '<a href="{}" class="button" target="_blank">✚ Добавить новую задачу</a>',
             full_url,
         )
+
 
     @admin.display(description="Курс", ordering="module__course")
     def get_course(self, obj):
@@ -180,7 +184,6 @@ class DifficultyLevelAdmin(admin.ModelAdmin):
 
 @admin.register(Task)
 class TaskAdmin(admin.ModelAdmin):
-    admin_order = 4
     form = TaskAdminForm
     list_display = (
         "number",
