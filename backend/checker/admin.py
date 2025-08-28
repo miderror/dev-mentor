@@ -4,7 +4,7 @@ from django.contrib import admin
 from django.urls import reverse
 from django.utils.html import format_html
 
-from .models import Check, CommonError
+from .models import Check
 
 
 @admin.register(Check)
@@ -106,9 +106,3 @@ class CheckAdmin(admin.ModelAdmin):
         if not obj.ai_suggestion:
             return "—"
         return format_html("<div>{}</div>", obj.ai_suggestion)
-
-
-@admin.register(CommonError)
-class CommonErrorAdmin(admin.ModelAdmin):
-    list_display = ("title", "error_pattern")
-    search_fields = ("title", "error_pattern", "description")

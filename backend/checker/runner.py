@@ -1,8 +1,8 @@
 import logging
 import os
+import shlex
 import shutil
 import uuid
-import shlex
 
 import docker
 
@@ -11,8 +11,9 @@ logger = logging.getLogger(__name__)
 LANG_CONFIG = {
     "python": {
         "image": "python:3.12-slim",
-        "command": lambda filename, escaped_input: f'sh -c "echo -n {escaped_input} | python {filename}"',
-        "filename": "main.py"
+        "command": lambda filename,
+        escaped_input: f'sh -c "echo -n {escaped_input} | python {filename}"',
+        "filename": "main.py",
     },
     # "javascript": {
     #     "image": "node:20-slim",
@@ -64,12 +65,6 @@ def execute_code(code: str, language: str = "python", input_data: str = "") -> d
             remove=False,
             detach=True,
         )
-
-        if input_data:
-            socket = container.attach_socket(params={'stdin': 1, 'stream': 1})
-            socket._sock.sendall(input_data.encode('utf-8'))
-            socket._sock.close()
-            socket.close()
 
         result = container.wait(timeout=EXEC_TIMEOUT_SECONDS)
         exit_code = result.get("StatusCode", 1)

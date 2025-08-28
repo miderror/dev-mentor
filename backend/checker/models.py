@@ -61,21 +61,3 @@ class Check(models.Model):
         verbose_name = "Проверка кода"
         verbose_name_plural = "Проверки кода"
         ordering = ["-created_at"]
-
-
-class CommonError(models.Model):
-    error_pattern = models.CharField(
-        max_length=255,
-        unique=True,
-        verbose_name="Шаблон ошибки (regex)",
-        help_text="Регулярное выражение для поиска в stderr.",
-    )
-    title = models.CharField(max_length=255, verbose_name="Причина ошибки")
-    description = models.TextField(verbose_name="Описание и решение")
-
-    def __str__(self):
-        return self.title
-
-    class Meta:
-        verbose_name = "Типовая ошибка"
-        verbose_name_plural = "Реестр типовых ошибок"

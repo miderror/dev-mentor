@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import re
 
 from aiogram import Bot
 from aiogram.enums import ParseMode
@@ -17,20 +16,12 @@ from bot.keyboards.inline_keyboards import get_after_submission_kb
 from bot.utils.db import get_check_for_feedback
 
 from . import ai_service
-from .models import Check, CommonError
+from .models import Check
 from .runner import execute_code
 
 logger = logging.getLogger(__name__)
 
 MAX_OUTPUT_LENGTH = 1000
-
-
-async def find_common_error(stderr: str) -> CommonError | None:
-    common_errors = await sync_to_async(list)(CommonError.objects.all())
-    for error in common_errors:
-        if re.search(error.error_pattern, stderr, re.DOTALL):
-            return error
-    return None
 
 
 @shared_task
